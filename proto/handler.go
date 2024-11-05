@@ -1,8 +1,8 @@
 package proto
 
-// Handler ...
-type Handler interface {
-	OnEvent(eventType EventType, data []byte)
+// EventHandler ...
+type EventHandler interface {
+	OnEvent(eventType string, data []byte)
 }
 
 type noopHandler struct{}
@@ -11,4 +11,4 @@ func newNoopHandler() *noopHandler {
 	return &noopHandler{}
 }
 
-func (noopHandler) OnEvent(_ EventType, _ []byte) {}
+func (noopHandler) OnEvent(_ string, _ []byte) {}

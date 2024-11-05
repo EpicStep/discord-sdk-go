@@ -14,13 +14,13 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/EpicStep/discord-game-sdk-go/transport"
+	"github.com/EpicStep/discord-sdk-go/transport"
 )
 
 // Conn implements connect to Discord protocol.
 type Conn struct {
 	clientID string
-	handler  Handler
+	handler  EventHandler
 
 	conn  transport.Conn
 	nonce atomic.Uint64
@@ -29,6 +29,7 @@ type Conn struct {
 	handshakeTimeout time.Duration
 	pingTimeout      time.Duration
 	pingInterval     time.Duration
+	invokeTimeout    time.Duration
 
 	pongChan    chan struct{}
 	pongChanMux sync.Mutex
@@ -42,12 +43,14 @@ type Conn struct {
 // Options ...
 type Options struct {
 	ClientID         string
-	Handler          Handler
+	Handler          EventHandler
 	DialTimeout      time.Duration
 	HandshakeTimeout time.Duration
 
 	PingTimeout  time.Duration
 	PingInterval time.Duration
+
+	InvokeTimeout time.Duration
 }
 
 func (o *Options) setDefaults() {
@@ -70,6 +73,10 @@ func (o *Options) setDefaults() {
 	if o.PingInterval <= 0 {
 		o.PingInterval = time.Minute
 	}
+
+	if o.InvokeTimeout <= 0 {
+		o.InvokeTimeout = time.Second * 5
+	}
 }
 
 // New returns new Conn.
@@ -84,6 +91,8 @@ func New(opts Options) *Conn {
 		dialTimeout:      opts.DialTimeout,
 		pingTimeout:      opts.PingTimeout,
 		pingInterval:     opts.PingInterval,
+
+		invokeTimeout: opts.InvokeTimeout,
 
 		rpcCalls: make(map[string]chan framePacket),
 	}
@@ -121,7 +130,7 @@ func (c *Conn) Run(ctx context.Context, f func(ctx context.Context) error) error
 		// TODO: wait RPC done before shutdown.
 
 		eg.Go(func() error {
-			// handle close
+			// close conn after finish.
 			<-eCtx.Done()
 			return c.conn.Close()
 		})
@@ -146,14 +155,35 @@ func (c *Conn) Run(ctx context.Context, f func(ctx context.Context) error) error
 	return nil
 }
 
+type InvokeOptions struct {
+	Event string
+}
+
+type InvokeOption func(*InvokeOptions)
+
+func InvokeWithEvent(event string) InvokeOption {
+	return func(o *InvokeOptions) {
+		o.Event = event
+	}
+}
+
 // Invoke RPC method.
-func (c *Conn) Invoke(ctx context.Context, command string, args []byte) ([]byte, error) {
+func (c *Conn) Invoke(ctx context.Context, command string, args []byte, opts ...InvokeOption) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.invokeTimeout)
+	defer cancel()
+
+	var invokeOptions InvokeOptions
+	for _, opt := range opts {
+		opt(&invokeOptions)
+	}
+
 	nonce := c.nextNonce()
 
 	input := framePacket{
 		Command: command,
 		Args:    args,
 		Nonce:   nonce,
+		Event:   invokeOptions.Event,
 	}
 
 	packet, err := json.Marshal(input)
@@ -188,7 +218,7 @@ func (c *Conn) Invoke(ctx context.Context, command string, args []byte) ([]byte,
 	case resultFrame = <-frameCh:
 	}
 
-	if resultFrame.Event == EventTypeError {
+	if resultFrame.Event == eventTypeError {
 		var e Error
 
 		if err = json.Unmarshal(resultFrame.Data, &e); err != nil {
@@ -244,11 +274,7 @@ func (c *Conn) handshake(ctx context.Context) error {
 		return err
 	}
 
-	if frame.Event != "" {
-		c.handler.OnEvent(frame.Event, data)
-	}
-
-	if frame.Event != EventTypeReady {
+	if frame.Event != eventTypeReady {
 		return fmt.Errorf("unexpected event: %s", frame.Event)
 	}
 

@@ -29,9 +29,13 @@ type conn struct {
 
 // Options ...
 type Options struct {
-	// Dialer used to connect to IPC (only on unix),
+	// Dialer used to connect to IPC (only on unix).
 	Dialer net.Dialer
-	// InstanceID is variable that you can use to handle multiple Discord clients.
+	// Conn can be used if you already have connected to Discord and just need transport wrap.
+	Conn net.Conn
+	// DisableInstanceLookup disables automatic Discord client lookup and only tries to connect to InstanceID.
+	DisableInstanceLookup bool
+	// InstanceID is variable that you can use to handle specific Discord clients. Used only if DisableInstanceLookup is true.
 	// Alternative to DISCORD_INSTANCE_ID.
 	// https://discord.com/developers/docs/game-sdk/getting-started#testing-locally-with-two-clients-environment-variable-example
 	InstanceID uint
@@ -39,13 +43,31 @@ type Options struct {
 
 // New opens new IPC Conn and returns it.
 func New(ctx context.Context, opts Options) (Conn, error) {
-	netConn, err := openConn(ctx, opts.Dialer, getDiscordFilename(opts.InstanceID))
-	if err != nil {
-		return nil, err
+	if opts.Conn == nil {
+		openSpecificConn := func(instanceID uint) (net.Conn, error) {
+			return openConn(ctx, opts.Dialer, getDiscordFilename(instanceID))
+		}
+
+		var err error
+		if opts.DisableInstanceLookup {
+			opts.Conn, err = openConn(ctx, opts.Dialer, getDiscordFilename(opts.InstanceID))
+		} else {
+			// 0 - main, 1 - Canary, 2 - PTB.
+			for i := uint(0); i < 3; i++ {
+				opts.Conn, err = openSpecificConn(i)
+				if err == nil {
+					break
+				}
+			}
+		}
+
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &conn{
-		conn: netConn,
+		conn: opts.Conn,
 	}, nil
 }
 

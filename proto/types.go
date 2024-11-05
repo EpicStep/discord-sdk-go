@@ -14,14 +14,9 @@ const (
 	pongOpcode
 )
 
-// EventType defines event types (https://discord.com/developers/docs/topics/rpc#commands-and-events).
-type EventType string
-
 const (
-	// EventTypeReady ...
-	EventTypeReady EventType = "READY"
-	// EventTypeError ...
-	EventTypeError EventType = "ERROR"
+	eventTypeReady = "READY"
+	eventTypeError = "ERROR"
 )
 
 type handshakePacket struct {
@@ -33,6 +28,6 @@ type framePacket struct {
 	Command string          `json:"cmd"`
 	Data    json.RawMessage `json:"data"`
 	Args    json.RawMessage `json:"args"`
-	Event   EventType       `json:"evt"`
+	Event   string          `json:"evt"`
 	Nonce   string          `json:"nonce"`
 }
