@@ -20,6 +20,11 @@ linters-settings:
 
   revive:
     enable-all-rules: true
+    rules:
+      - name: line-length-limit
+        arguments: 150
+      - name: add-constant
+        disabled: true
 
 linters:
   enable:
@@ -31,7 +36,6 @@ linters:
     - ineffassign           # detects when assignments to existing variables are not used
     - goimports             # check import statements are formatted according to the 'goimport' command, --fix flag autofix is supported.
     - bodyclose             # checks whether HTTP response body is closed successfully
-    - lll                   # reports long lines
     - stylecheck            # stylecheck is a replacement for golint
     - unused                # checks Go code for unused constants, variables, functions and types
     - contextcheck          # check whether the function uses a non-inherited context

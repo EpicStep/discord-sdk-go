@@ -9,6 +9,10 @@ import (
 	"path/filepath"
 )
 
+func listenIPC(filename string) (net.Listener, error) {
+	return net.Listen("unix", "/tmp/"+filename)
+}
+
 func openConn(ctx context.Context, dialer net.Dialer, filename string) (net.Conn, error) {
 	return dialer.DialContext(
 		ctx,
