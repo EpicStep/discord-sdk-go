@@ -25,6 +25,12 @@ linters-settings:
         arguments: 150
       - name: add-constant
         disabled: true
+      - name: unhandled-error
+        arguments: [ "fmt.Println", "fmt.Printf" ]
+      - name: cognitive-complexity
+        arguments: 15
+      - name: comment-spacings
+        disabled: true
 
 linters:
   enable:
