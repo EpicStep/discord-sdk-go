@@ -107,7 +107,12 @@ func (c *Conn) Run(ctx context.Context, f func(ctx context.Context) error) error
 	}
 
 	dialCtx, dialCancel := context.WithTimeout(ctx, c.dialTimeout)
-	tConn, err := transport.New(dialCtx, transport.Options{})
+	tConn, err := transport.Dial(
+		dialCtx,
+		transport.DialOptions{
+			EnableInstanceLookup: true,
+		},
+	)
 	dialCancel()
 	if err != nil {
 		return err
@@ -155,35 +160,24 @@ func (c *Conn) Run(ctx context.Context, f func(ctx context.Context) error) error
 	return nil
 }
 
-type InvokeOptions struct {
-	Event string
-}
-
-type InvokeOption func(*InvokeOptions)
-
-func InvokeWithEvent(event string) InvokeOption {
-	return func(o *InvokeOptions) {
-		o.Event = event
-	}
+type InvokeParams struct {
+	Command string
+	Args    []byte
+	Event   string
 }
 
 // Invoke RPC method.
-func (c *Conn) Invoke(ctx context.Context, command string, args []byte, opts ...InvokeOption) ([]byte, error) {
+func (c *Conn) Invoke(ctx context.Context, params InvokeParams) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.invokeTimeout)
 	defer cancel()
-
-	var invokeOptions InvokeOptions
-	for _, opt := range opts {
-		opt(&invokeOptions)
-	}
 
 	nonce := c.nextNonce()
 
 	input := framePacket{
-		Command: command,
-		Args:    args,
+		Command: params.Command,
+		Args:    params.Args,
 		Nonce:   nonce,
-		Event:   invokeOptions.Event,
+		Event:   params.Event,
 	}
 
 	packet, err := json.Marshal(input)
@@ -413,8 +407,8 @@ func (c *Conn) nextNonce() string {
 }
 
 func noUpdates(err error) bool {
-	var syscall *net.OpError
-	if errors.As(err, &syscall) && syscall.Timeout() {
+	var e *net.OpError
+	if errors.As(err, &e) && e.Timeout() {
 		return true
 	}
 	return false

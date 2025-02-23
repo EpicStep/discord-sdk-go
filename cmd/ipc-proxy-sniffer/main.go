@@ -1,4 +1,4 @@
-// Package main contains an IPC proxy used for sniffing the communication between the original C++ library and the Discord client network.
+// Package main contains an IPC proxy used for sniffing the communication between any client and the Discord client.
 package main
 
 import (
@@ -104,8 +104,14 @@ func handleConn(ctx context.Context, wg *sync.WaitGroup, connectionID uint, clie
 	wg.Add(1)
 	defer wg.Done()
 
-	fmt.Printf("Client is connected, id %d", connectionID)
-	defer fmt.Printf("Client is disconnected, id %d", connectionID)
+	fmt.Printf("[%d] Client is connected\n", connectionID)
+	defer fmt.Printf("[%d] Client is disconnected\n", connectionID)
+
+	defer func() {
+		if err := clientConn.Close(); err != nil {
+			fmt.Printf("[%d] Failed to close client connection: %s\n", connectionID, err)
+		}
+	}()
 
 	originConn, err := transport.Dial(ctx, transport.DialOptions{
 		InstanceID: *originInstanceID,
@@ -115,6 +121,12 @@ func handleConn(ctx context.Context, wg *sync.WaitGroup, connectionID uint, clie
 		return
 	}
 
+	defer func() {
+		if err = originConn.Close(); err != nil {
+			fmt.Printf("[%d] Failed to close connection to origin: %s\n", connectionID, err)
+		}
+	}()
+
 	eg, eCtx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
@@ -123,11 +135,6 @@ func handleConn(ctx context.Context, wg *sync.WaitGroup, connectionID uint, clie
 
 	eg.Go(func() error {
 		return reader(eCtx, connectionID, clientConn, originConn)
-	})
-
-	eg.Go(func() error {
-		<-eCtx.Done()
-		return errors.Join(originConn.Close(), clientConn.Close())
 	})
 
 	if err = eg.Wait(); err != nil {
